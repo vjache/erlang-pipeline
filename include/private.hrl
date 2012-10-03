@@ -1,0 +1,1 @@
+-record(pipe_spec, {name, pipeline, pipe_type, args}).

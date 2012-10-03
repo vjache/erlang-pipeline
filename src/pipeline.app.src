@@ -1,0 +1,12 @@
+{application, pipeline,
+ [
+  {description, "Pipe line application."},
+  {vsn, "0.0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { pipeline_app, []}},
+  {env, []}
+ ]}.

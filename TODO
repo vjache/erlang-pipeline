@@ -1,0 +1,4 @@
+1. Additional Pipe types
+	1.1. Event handler adapter
+	1.2. Port adapter pipe
+	1.3. Foreach pipe
