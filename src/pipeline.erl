@@ -30,7 +30,8 @@
 
 -export([new_filter/3, 
 		 new_mapper/3, 
-		 new_folder/4, 
+		 new_folder/4,
+		 new_foreach/3, 
 		 new_mff/4,
 		 new_switch/4,
 		 new_evt/3,
@@ -44,6 +45,7 @@
 -type filter_fun(V) 	 :: fun( (V) -> boolean() ).
 -type map_fun(V1,V2)  	 :: fun( (V1) -> V2 ).
 -type fold_fun(V, Acc) :: fun((V, Acc)-> Acc).
+-type action_fun(V) 	 :: fun( (V) -> ok ).
 -type mff_fun(V, Acc)	 :: fun((V, Acc) -> {out, V1 :: any(), Acc}) | {nout, Acc}.
 -type switch_fun(V, Acc) :: fun((V, Acc)-> {PipeName :: pipe_name(), Acc}).
 
@@ -100,6 +102,18 @@ new_folder(Pipeline, PipeName, FoldFun, Acc0) ->
 						  name=PipeName, 
 						  pipe_type=fold, 
 						  args=[FoldFun, Acc0]},
+	pipeline_ctrl_srv:create_pipe(Pipeline, PipeSpec).
+%----------------------------------------------
+%
+%----------------------------------------------
+-spec new_foreach(Pipeline :: pipeline_ref(), 
+				 PipeName :: pipe_name(), 
+				 ActionFun  :: action_fun( any() ) ) -> ok.
+new_foreach(Pipeline, PipeName, ActionFun) ->
+	PipeSpec = #pipe_spec{pipeline=Pipeline, 
+						  name=PipeName, 
+						  pipe_type=foreach, 
+						  args=ActionFun},
 	pipeline_ctrl_srv:create_pipe(Pipeline, PipeSpec).
 %----------------------------------------------
 %

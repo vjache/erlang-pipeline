@@ -58,6 +58,7 @@ init(#pipe_spec{pipeline=Pipeline, name=Name, pipe_type=T, args = Args}=Spec) ->
 	case T of
 		filter 	 	-> Fun=Args, Acc=undefined;
 		map    	 	-> Fun=Args, Acc=undefined;
+		foreach	 	-> Fun=Args, Acc=undefined;
 		fold   	 	-> [Fun, Acc]=Args;
 		mff	   	 	-> [Fun, Acc]=Args;
 		switch 		-> [Fun, Acc]=Args;
@@ -95,6 +96,12 @@ handle_cast({push, Value},
 	Acc1 = FoldFun(Value, Acc0), 
 	multi_cast_({push, Acc1}, State),
 	{noreply, State#pipe_state{acc=Acc1}};
+
+handle_cast({push, Value}=Msg, 
+			#pipe_state{type = foreach, func=ActionFun}=State) ->
+	ActionFun(Value), 
+	multi_cast_(Msg, State),
+	{noreply, State};
 
 handle_cast({push, Value}, 
 			#pipe_state{type=map, func=MapFun}=State) ->
