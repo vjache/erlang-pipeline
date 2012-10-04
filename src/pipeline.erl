@@ -38,7 +38,7 @@
 		 new_gate_src/4,
 		 new_gate_dst/4,
 		 connect/3,
-		 interconnect/4,
+		 connect_all/2,
 		 whereis/2,
 		 pushf/2]).
 
@@ -175,15 +175,6 @@ new_gate_src(Pipeline, PipeName, PipelineSrc, PipeNameSrc) ->
 						  pipe_type={gate,src}, 
 						  args=[PipelineSrc, PipeNameSrc]},
 	pipeline_ctrl_srv:create_pipe(Pipeline, PipeSpec).
-%----------------------------------------------
-%
-%----------------------------------------------
--spec interconnect(PipelineSrc :: pipeline_ref(), 
-				   PipeNameSrc :: pipe_name(), 
-				   PipelineDst :: pipeline_ref(), 
-				   PipeNameDst :: pipe_name()) -> ok.
-interconnect(PipelineSrc, PipeNameSrc, PipelineDst, PipeNameDst) ->
-	ok.
 
 %----------------------------------------------
 %
@@ -198,7 +189,10 @@ connect(Pipeline, PipeSrcName, PipeDestName) ->
 %----------------------------------------------
 -spec connect_all(Pipeline		:: pipeline_ref(),
 			  	  PipeNames 	:: [pipe_name()]) -> ok.
-connect_all(Pipeline, PipeNames) ->
+connect_all(Pipeline, [Src, Dst | Tail]=_PipeNames) ->
+	connect(Pipeline, Src, Dst),
+	connect_all(Pipeline, [Dst | Tail]);
+connect_all(_Pipeline, PipeNames) when length(PipeNames) < 2 ->
 	ok.
 %----------------------------------------------
 %
@@ -211,15 +205,18 @@ whereis(Pipeline, PipeName) ->
 		_:{noproc, _} 		-> undefined;
 		_:{{nodedown, _},_} -> undefined 
 	end.
-
+%----------------------------------------------
+%
+%----------------------------------------------
+-spec pushf(Pipeline :: pipeline_ref(), PipeName :: pipe_name()) -> {MonitorRef :: reference(), fun( (Value :: term()) -> ok)}.
 pushf(Pipeline, PipeName) ->
 	case whereis(Pipeline, PipeName) of
 		undefined -> undefined;
-		PipePid   -> fun(Val) ->
-							 gen_server:cast(PipePid, {push, Val})
-					 end
+		PipePid   -> {erlang:monitor(process, PipePid), 
+					  fun(Val) ->	 
+							  gen_server:cast(PipePid, {push, Val})
+					  end}
 	end.
-			
 %----------------------------------------------
 %
 %----------------------------------------------
