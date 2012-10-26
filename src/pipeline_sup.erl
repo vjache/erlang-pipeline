@@ -29,7 +29,7 @@
 %% External exports
 %% --------------------------------------------------------------------
 
--export([start_link/0, start_link/1, start_pipe/2]).
+-export([start_link/0, start_link/1, start_pipe/2, start_pipeline/1]).
 
 -export([init/1]).
 
@@ -43,7 +43,11 @@
 %% ===================================================================
 
 start_link() ->
-	supervisor:start_link(?MODULE, root).
+	supervisor:start_link({local,?MODULE}, ?MODULE, root).
+
+start_pipeline(PipelineModule) ->
+	{ok, _Child} = supervisor:start_child(
+					?MODULE, ?SUPER(PipelineModule, [{instance, PipelineModule}])).
 
 start_link({instance, PipelineModule}) when is_atom(PipelineModule) ->
     supervisor:start_link(?MODULE, {instance, PipelineModule});
@@ -70,9 +74,8 @@ start_pipe(Pipeline, #pipe_spec{name=PipeLabel}=PipeSpec) ->
 %% Supervisor callbacks
 %% ===================================================================
 init(root) ->
-	PipelineModule=pipeline_test,
 	{ok, { {one_for_one, 5, 10}, 
-		   [?SUPER(PipelineModule, [{instance, PipelineModule}])] } };
+		   [] } };
 init({instance, PipelineModule}) ->
 	PipesSupRegName=list_to_atom(atom_to_list(PipelineModule) ++ ".pipes_sup"),
 	{ok, { {rest_for_one, 5, 10}, 
