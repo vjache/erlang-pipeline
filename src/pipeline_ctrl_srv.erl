@@ -100,12 +100,17 @@ handle_call({create_pipe, #pipe_spec{name=PipeName}=PipeSpec}, _From,
 	end;
 handle_call({connect_pipes, PipeNameSrc, PipeNameDst}, _From, 
 			#state{graph=G}=State) ->
-	{_, PipePidSrc} = digraph:vertex(G, PipeNameSrc),
-	PDist = {_, _} =  digraph:vertex(G, PipeNameDst),
-	Edge={PipeNameSrc, PipeNameDst},
-	Edge=digraph:add_edge(G, Edge, PipeNameSrc, PipeNameDst, ""),
-	pipeline_pipe_srv:add_nexta(PipePidSrc, PDist),
-    {reply, ok, State};
+	try
+		{_, PipePidSrc} = get_pipe_vertex(G, PipeNameSrc),
+		PDist = {_, _} =  get_pipe_vertex(G, PipeNameDst),
+		Edge={PipeNameSrc, PipeNameDst},
+		Edge=digraph:add_edge(G, Edge, PipeNameSrc, PipeNameDst, ""),
+		pipeline_pipe_srv:add_nexta(PipePidSrc, PDist),
+		{reply, ok, State}
+	catch 
+		_:Reason -> 
+			{reply, {error , Reason}, State}
+	end;
 handle_call({get_pipe_pid, PipeName}, _From, 
 			#state{graph=G}=State) ->
 	{reply, 
@@ -115,6 +120,12 @@ handle_call({get_pipe_pid, PipeName}, _From,
 	 end, State};
 handle_call(_Request, _From, State) ->
     {reply, unexpected, State}.
+
+get_pipe_vertex(G, PipeName) ->
+	case digraph:vertex(G, PipeName) of
+		false  -> throw({unknown_pipe, PipeName});
+		Vertex -> Vertex
+	end.
 %% --------------------------------------------------------------------
 %% Function: handle_cast/2
 %% Description: Handling cast messages
