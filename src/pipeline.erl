@@ -28,7 +28,8 @@
 %% Exported Functions
 %%
 
--export([new_filter/3, 
+-export([new_pipeline/1,
+		 new_filter/3, 
 		 new_mapper/3, 
 		 new_folder/4,
 		 new_foreach/3, 
@@ -66,6 +67,10 @@
 %% API Functions
 %%
 
+new_pipeline(PipelineModule) ->
+	pipeline_sup:start_pipeline(PipelineModule),
+	ok.
+
 %----------------------------------------------
 %
 %----------------------------------------------
@@ -73,8 +78,7 @@
 				 PipeName :: pipe_name(), 
 				 PredFun  :: filter_fun( any() ) ) -> pipe_ref().
 new_filter(Pipeline, PipeName, PredFun) ->
-	PipeSpec = #pipe_spec{pipeline=Pipeline, 
-						  name=PipeName, 
+	PipeSpec = #pipe_spec{name=PipeName, 
 						  pipe_type=filter, 
 						  args=PredFun},
 	pipeline_ctrl_srv:create_pipe(Pipeline, PipeSpec).
@@ -85,8 +89,7 @@ new_filter(Pipeline, PipeName, PredFun) ->
 				 PipeName :: pipe_name(), 
 				 MapFun   :: map_fun( any(), any() ) ) -> pipe_ref().
 new_mapper(Pipeline, PipeName, MapFun) ->
-	PipeSpec = #pipe_spec{pipeline=Pipeline, 
-						  name=PipeName, 
+	PipeSpec = #pipe_spec{name=PipeName, 
 						  pipe_type=map, 
 						  args=MapFun},
 	pipeline_ctrl_srv:create_pipe(Pipeline, PipeSpec).
@@ -98,8 +101,7 @@ new_mapper(Pipeline, PipeName, MapFun) ->
 				 FoldFun  :: fold_fun( any(), any() ),
 				 Acc0	  :: any() ) -> pipe_ref().
 new_folder(Pipeline, PipeName, FoldFun, Acc0) ->
-	PipeSpec = #pipe_spec{pipeline=Pipeline, 
-						  name=PipeName, 
+	PipeSpec = #pipe_spec{name=PipeName, 
 						  pipe_type=fold, 
 						  args=[FoldFun, Acc0]},
 	pipeline_ctrl_srv:create_pipe(Pipeline, PipeSpec).
@@ -110,8 +112,7 @@ new_folder(Pipeline, PipeName, FoldFun, Acc0) ->
 				 PipeName :: pipe_name(), 
 				 ActionFun  :: action_fun( any() ) ) -> ok.
 new_foreach(Pipeline, PipeName, ActionFun) ->
-	PipeSpec = #pipe_spec{pipeline=Pipeline, 
-						  name=PipeName, 
+	PipeSpec = #pipe_spec{name=PipeName, 
 						  pipe_type=foreach, 
 						  args=ActionFun},
 	pipeline_ctrl_srv:create_pipe(Pipeline, PipeSpec).
@@ -123,8 +124,7 @@ new_foreach(Pipeline, PipeName, ActionFun) ->
 			  MffFun   :: mff_fun( any(), any() ),
 			  Acc0 	   :: any() ) -> pipe_ref().
 new_mff(Pipeline, PipeName, MffFun, Acc0) ->
-	PipeSpec = #pipe_spec{pipeline=Pipeline, 
-						  name=PipeName, 
+	PipeSpec = #pipe_spec{name=PipeName, 
 						  pipe_type=mff, 
 						  args=[MffFun, Acc0]},
 	pipeline_ctrl_srv:create_pipe(Pipeline, PipeSpec).
@@ -136,8 +136,7 @@ new_mff(Pipeline, PipeName, MffFun, Acc0) ->
 			  SwitchFun   :: switch_fun( any(), any() ),
 			  Acc0 	   	  :: any() ) -> pipe_ref().
 new_switch(Pipeline, PipeName, SwitchFun, Acc0) ->
-	PipeSpec = #pipe_spec{pipeline=Pipeline, 
-						  name=PipeName, 
+	PipeSpec = #pipe_spec{name=PipeName, 
 						  pipe_type=switch, 
 						  args=[SwitchFun, Acc0]},
 	pipeline_ctrl_srv:create_pipe(Pipeline, PipeSpec).
@@ -157,8 +156,7 @@ new_evt(Pipeline, PipeName, EventManagerRef) ->
 				   PipelineDst 	 :: pipeline_ref(),
 				   PipeNameDst 	 :: pipe_name()) -> ok.
 new_gate_dst(Pipeline, PipeName, PipelineDst, PipeNameDst) ->
-	PipeSpec = #pipe_spec{pipeline=Pipeline, 
-						  name=PipeName,
+	PipeSpec = #pipe_spec{name=PipeName,
 						  pipe_type={gate,dst}, 
 						  args=[PipelineDst, PipeNameDst]},
 	pipeline_ctrl_srv:create_pipe(Pipeline, PipeSpec).
@@ -170,8 +168,7 @@ new_gate_dst(Pipeline, PipeName, PipelineDst, PipeNameDst) ->
 				   PipelineDst 	 :: pipeline_ref(),
 				   PipeNameDst 	 :: pipe_name()) -> ok.
 new_gate_src(Pipeline, PipeName, PipelineSrc, PipeNameSrc) ->
-	PipeSpec = #pipe_spec{pipeline=Pipeline, 
-						  name=PipeName,
+	PipeSpec = #pipe_spec{name=PipeName,
 						  pipe_type={gate,src}, 
 						  args=[PipelineSrc, PipeNameSrc]},
 	pipeline_ctrl_srv:create_pipe(Pipeline, PipeSpec).
@@ -221,11 +218,10 @@ pushf(Pipeline, PipeName) ->
 %
 %----------------------------------------------
 -spec info(Pipeline :: pipeline_ref()) -> ok.
-info(Pipeline) ->
+info(_Pipeline) ->
 	ok.
 	
 
 %%
 %% Local Functions
 %%
-

@@ -38,7 +38,8 @@
 		 code_change/3,
 		 connect_pipes/3,
 		 register_pipe_pid/3,
-		 get_pipe_pid/2]).
+		 get_pipe_pid/2,
+		 get_pipeline_name/1]).
 
 -record(state, {pipeline_module, sup, graph}).
 
@@ -68,6 +69,9 @@ register_pipe_pid(Pipeline, PipeName, PipePid) ->
 get_pipe_pid(Pipeline, PipeName) ->
 	throw_error(gen_server:call(to_srv_ref(Pipeline), {get_pipe_pid, PipeName})).
 
+get_pipeline_name(CtrlPid) ->
+	throw_error(gen_server:call(to_srv_ref(CtrlPid), get_pipeline_name)).
+
 %% --------------------------------------------------------------------
 %% Function: init/1
 %% Description: Initiates the server
@@ -93,10 +97,13 @@ init([SupRef, PipelineModule]) ->
 handle_call({create_pipe, #pipe_spec{name=PipeName}=PipeSpec}, _From, 
 			#state{sup=SupRef, pipeline_module=PMod, graph=G}=State) ->
 	case digraph:vertex(G, PipeName) of
-		false -> PipePid=pipeline_sup:start_pipe(SupRef, PipeSpec),
-				 digraph:add_vertex(G, PipeName, PipePid),
-				 {reply, {PMod:get_name(), PipeName}, State};
-		_ -> {reply, {error,{pipe_name_in_use, PipeName}}, State}
+		false ->
+			PipeSpec1=PipeSpec#pipe_spec{pipeline=PMod:get_name()},
+			PipePid=pipeline_sup:start_pipe(SupRef, PipeSpec1),
+			digraph:add_vertex(G, PipeName, PipePid),
+			{reply, {PMod:get_name(), PipeName}, State};
+		_ -> 
+			{reply, {error,{pipe_name_in_use, PipeName}}, State}
 	end;
 handle_call({connect_pipes, PipeNameSrc, PipeNameDst}, _From, 
 			#state{graph=G}=State) ->
@@ -118,6 +125,8 @@ handle_call({get_pipe_pid, PipeName}, _From,
 		 {_, PipePid} -> PipePid;
 		 false 		  -> undefined
 	 end, State};
+handle_call(get_pipeline_name, _From, #state{pipeline_module=PMod}=State) ->
+    {reply, PMod:get_name(), State};
 handle_call(_Request, _From, State) ->
     {reply, unexpected, State}.
 
