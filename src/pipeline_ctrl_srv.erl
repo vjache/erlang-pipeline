@@ -58,13 +58,13 @@ start_link(SupRef, PipelineModule) ->
 	  ?MODULE, [SupRef, PipelineModule], []).
 
 create_pipe(Pipeline, PipeSpec) ->
-	throw_error(gen_server:call(to_srv_ref(Pipeline), {create_pipe, PipeSpec})).
+	throw_error(gen_server:call(to_srv_ref(Pipeline), {create_pipe, PipeSpec}, 30000)).
 
 connect_pipes(Pipeline, PipeNameSrc, PipeNameDst) ->
 	throw_error(gen_server:call(to_srv_ref(Pipeline), {connect_pipes, PipeNameSrc, PipeNameDst})).
 
 register_pipe_pid(Pipeline, PipeName, PipePid) ->
-	throw_error(gen_server:cast(to_srv_ref(Pipeline), {register_pipe_pid, {PipeName, PipePid}})).
+	throw_error(gen_server:call(to_srv_ref(Pipeline), {register_pipe_pid, {PipeName, PipePid}})).
 
 get_pipe_pid(Pipeline, PipeName) ->
 	throw_error(gen_server:call(to_srv_ref(Pipeline), {get_pipe_pid, PipeName})).
@@ -95,36 +95,44 @@ init([SupRef, PipelineModule]) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
 handle_call({create_pipe, #pipe_spec{name=PipeName}=PipeSpec}, _From, 
-			#state{sup=SupRef, pipeline_module=PMod, graph=G}=State) ->
+	    #state{sup=SupRef, pipeline_module=PMod, graph=G}=State) ->
 	case digraph:vertex(G, PipeName) of
 		false ->
-			PipeSpec1=PipeSpec#pipe_spec{pipeline=PMod:get_name()},
-			PipePid=pipeline_sup:start_pipe(SupRef, PipeSpec1),
-			digraph:add_vertex(G, PipeName, PipePid),
-			{reply, {PMod:get_name(), PipeName}, State};
+			spawn_link(fun()->
+							   PipeSpec1=PipeSpec#pipe_spec{pipeline=PMod:get_name()},
+							   try pipeline_sup:start_pipe(SupRef, PipeSpec1),
+								   gen_server:reply(_From, {PMod:get_name(), PipeName})
+							   catch
+								   _:Reason ->
+									   gen_server:reply(_From, {error, Reason})
+							   end
+					   end),
+    		{noreply, State};
 		_ -> 
-			{reply, {error,{pipe_name_in_use, PipeName}}, State}
+			{reply, {error, {pipe_name_in_use, PipeName} }, State}
+	end;
+handle_call({register_pipe_pid, PipePid}, _From, #state{graph=G}=State) ->
+	try register_pipe_pid(PipePid, G),
+		{reply, ok, State}
+	catch
+		_:Reason ->
+			{reply, {error, Reason}, State}
 	end;
 handle_call({connect_pipes, PipeNameSrc, PipeNameDst}, _From, 
-			#state{graph=G}=State) ->
-	try
-		{_, PipePidSrc} = get_pipe_vertex(G, PipeNameSrc),
-		PDist = {_, _} =  get_pipe_vertex(G, PipeNameDst),
-		Edge={PipeNameSrc, PipeNameDst},
-		Edge=digraph:add_edge(G, Edge, PipeNameSrc, PipeNameDst, ""),
-		pipeline_pipe_srv:add_nexta(PipePidSrc, PDist),
-		{reply, ok, State}
-	catch 
-		_:Reason -> 
-			{reply, {error , Reason}, State}
-	end;
+	    #state{graph=G}=State) ->
+	{_, PipePidSrc} = get_pipe_vertex(G, PipeNameSrc),
+	PDist = {_, _} =  get_pipe_vertex(G, PipeNameDst),
+	Edge={PipeNameSrc, PipeNameDst},
+	Edge=digraph:add_edge(G, Edge, PipeNameSrc, PipeNameDst, ""),
+	pipeline_pipe_srv:add_nexta(PipePidSrc, PDist),
+    {reply, ok, State};
 handle_call({get_pipe_pid, PipeName}, _From, 
-			#state{graph=G}=State) ->
-	{reply, 
-	 case digraph:vertex(G, PipeName) of
-		 {_, PipePid} -> PipePid;
-		 false 		  -> undefined
-	 end, State};
+	    #state{graph=G}=State) ->
+    {reply, 
+     case digraph:vertex(G, PipeName) of
+	 {_, PipePid} -> PipePid;
+	 false 		  -> undefined
+     end, State};
 handle_call(get_pipeline_name, _From, #state{pipeline_module=PMod}=State) ->
     {reply, PMod:get_name(), State};
 handle_call(_Request, _From, State) ->
@@ -142,30 +150,38 @@ get_pipe_vertex(G, PipeName) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% --------------------------------------------------------------------
-handle_cast({register_pipe_pid, {PipeName, PipePid}=Pipe}, 
-			#state{graph=G}=State) ->
-	% Update PID for pipe
-	case digraph:vertex(G, PipeName) of
-		{_, PipePid} -> ok;
-		{_, OldPipePid} ->
-			is_pid(OldPipePid) andalso 
-				is_process_alive(OldPipePid) andalso 
-					throw({pipe_alive, OldPipePid}),
-			digraph:add_vertex(G, PipeName, PipePid)
-	end,
-	% Add destination pipes PIDs
-	[begin
-		 PDst={_,_}=digraph:vertex(G, DstPipe), 
-		 pipeline_pipe_srv:add_nexta(PipePid, PDst)
-	 end || DstPipe <- digraph:out_neighbours(G, PipeName)],
-	% Add PID to source pipes
-	[begin
-		 {_,SrcPipePid}=digraph:vertex(G, SrcPipe), 
-		 pipeline_pipe_srv:add_nexta(SrcPipePid, Pipe)
-	 end || SrcPipe <- digraph:in_neighbours(G, PipeName)],
-    {noreply, State};
+%% handle_cast({register_pipe_pid, Pipe}, 
+%% 	    #state{graph=G}=State) ->
+%%     register_pipe_pid(Pipe, G),
+%%     {noreply, State};
 handle_cast(_Msg, State) ->
-    {noreply, State}.
+    {stop, {unexpected, _Msg}, State}.
+
+register_pipe_pid({PipeName, PipePid} = Pipe, G) ->
+	% Update PID for pipe
+    case digraph:vertex(G, PipeName) of
+	{_, PipePid} -> ok;
+	{_, OldPipePid} ->
+	    IsProcAlive = is_process_alive(OldPipePid),
+	    if IsProcAlive ->
+		    throw({pipe_alive, OldPipePid});
+	       true ->
+		    digraph:add_vertex(G, PipeName, PipePid)
+	    end;
+	false ->
+	    digraph:add_vertex(G, PipeName, PipePid)
+    end,
+    % Add destination pipes PIDs
+    [begin
+	 PDst={_,_}=digraph:vertex(G, DstPipe), 
+	 pipeline_pipe_srv:add_nexta(PipePid, PDst)
+     end || DstPipe <- digraph:out_neighbours(G, PipeName)],
+    % Add PID to source pipes
+    [begin
+	 {_,SrcPipePid}=digraph:vertex(G, SrcPipe), 
+	 pipeline_pipe_srv:add_nexta(SrcPipePid, Pipe)
+     end || SrcPipe <- digraph:in_neighbours(G, PipeName)],
+	ok.
 
 %% --------------------------------------------------------------------
 %% Function: handle_info/2
